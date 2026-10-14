@@ -1,0 +1,18 @@
+# kefu-agent 依赖清单（钉住 = 锁定我们验证过的版本，新人 clone 下来一把装好）
+#
+# 选型说明（小型公司真实业务的视角）：
+#   - Web 框架用 FastAPI 而非 Flask/Django：要异步（调大模型一等公民）+ 自带参数校验
+#   - 大模型 SDK 用 openai：千问提供 OpenAI 兼容模式，换供应商只改 base_url
+#   - 向量库用 ChromaDB：嵌入式（免部署独立服务），小公司养不起 Milvus 集群
+#   - 刻意不装 LangChain：核心链路（agent loop / 检索融合）手写，
+#     可控、可调试、面试可讲，框架带来的抽象税在这个体量不划算
+#   - SQLite 用 Python 自带标准库，无需依赖
+
+fastapi==0.143.0          # Web 框架：路由 + 请求校验
+uvicorn==0.54.0           # ASGI 服务器：真正跑起 FastAPI 的进程
+pydantic==2.14.0          # 数据校验：把非法请求挡在业务代码之前
+openai==3.28.0            # 大模型 SDK（走千问 OpenAI 兼容层）
+python-dotenv==1.2.4      # 从 .env 读取 API key（密钥不进代码库）
+chromadb==1.5.9           # 向量数据库：RAG 的存储与相似度检索
+rank_bm25==0.2.2          # BM25 关键词检索：与向量检索互补做混合召回
+httpx==0.28.1             # HTTP 客户端：调用 rerank 等兼容层没有的接口

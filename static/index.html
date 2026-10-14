@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>客服小助手</title>
+<style>
+  /* ================= 全局 ================= */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #eef1f5;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* ================= 聊天窗口整体 ================= */
+  .chat-window {
+    width: 420px;
+    height: 640px;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.12);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ================= 顶部栏 ================= */
+  .chat-header {
+    background: #4a6cf7;
+    color: #fff;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .avatar {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+  .header-info .name { font-size: 16px; font-weight: 600; }
+  .header-info .status { font-size: 12px; opacity: .85; margin-top: 2px; }
+  .new-chat-btn {
+    margin-left: auto;
+    background: rgba(255,255,255,.2);
+    color: #fff;
+    border: none;
+    border-radius: 14px;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .new-chat-btn:hover { background: rgba(255,255,255,.32); }
+
+  /* ================= 消息区 ================= */
+  .chat-body {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    background: #f7f8fa;
+  }
+
+  .msg-row { display: flex; gap: 8px; }
+  .msg-row.user { justify-content: flex-end; }
+
+  .msg-row .bubble {
+    max-width: 75%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.6;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  /* 客服消息：左侧、白底 */
+  .msg-row.bot .bubble {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-top-left-radius: 4px;
+  }
+  /* 用户消息：右侧、蓝底 */
+  .msg-row.user .bubble {
+    background: #4a6cf7;
+    color: #fff;
+    border-top-right-radius: 4px;
+  }
+  .msg-row .time {
+    font-size: 11px;
+    color: #9ca3af;
+    align-self: flex-end;
+  }
+
+  /* 「正在输入」动画（三个点） */
+  .typing { display: inline-flex; gap: 4px; padding: 4px 2px; }
+  .typing span {
+    width: 6px; height: 6px;
+    background: #9ca3af;
+    border-radius: 50%;
+    animation: blink 1.2s infinite;
+  }
+  .typing span:nth-child(2) { animation-delay: .2s; }
+  .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%,80%,100%{opacity:.25} 40%{opacity:1} }
+
+  /* ================= 底部输入区 ================= */
+  .chat-input {
+    display: flex;
+    gap: 10px;
+    padding: 12px;
+    border-top: 1px solid #e5e7eb;
+    background: #fff;
+  }
+  .chat-input input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 20px;
+    outline: none;
+    font-size: 14px;
+  }
+  .chat-input input:focus { border-color: #4a6cf7; }
+  .chat-input button {
+    padding: 10px 20px;
+    background: #4a6cf7;
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .chat-input button:disabled { background: #c3cdfb; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<div class="chat-window">
+  <!-- 顶部栏：客服身份 + 在线状态 + 新会话按钮 -->
+  <div class="chat-header">
+    <div class="avatar">🤖</div>
+    <div class="header-info">
+      <div class="name">客服小助手</div>
+      <div class="status">● 在线</div>
+    </div>
+    <button class="new-chat-btn" onclick="newChat()">新会话</button>
+  </div>
+
+  <!-- 消息区：所有对话气泡都往这里插 -->
+  <div class="chat-body" id="chatBody">
+    <div class="msg-row bot">
+      <div class="bubble">您好，我是客服小助手，有什么可以帮您？😊</div>
+    </div>
+  </div>
+
+  <!-- 输入区 -->
+  <div class="chat-input">
+    <input id="inputBox" type="text" placeholder="请输入您的问题…" autocomplete="off">
+    <button id="sendBtn" onclick="send()">发送</button>
+  </div>
+</div>
+
+<script>
+  // ================== 会话状态 ==================
+  // 历史记在浏览器内存里，同时后端用 SQLite 落盘——刷新页面从数据库恢复。
+  const history = [];
+  const MAX_HISTORY = 6;   // 滑动窗口：只带最近 6 条。
+                            // 太长 → 撑爆 token、稀释当前问题；
+                            // 太短 → "那运费谁出"这种追问接不住。
+  let pending = false;     // 输入锁：等回复期间禁止再发。
+                            // 治的是连发竞态（重复 id=typingRow、回复一股脑涌出那个 bug）
+
+  // 会话 ID：存在浏览器 localStorage，刷新不丢（这是"找回上次对话"的钥匙）
+  const SESSION_KEY = "kefu_session_id";
+  let sessionId = localStorage.getItem(SESSION_KEY) || null;
+
+  // ================== 工具函数 ==================
+
+  // 在消息区追加一条气泡。who = 'bot'（左侧）或 'user'（右侧）
+  function addBubble(who, text) {
+    const row = document.createElement("div");
+    row.className = "msg-row " + who;
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = text;          // 用 textContent 而非 innerHTML：防 XSS
+    row.appendChild(bubble);
+
+    const time = document.createElement("div");
+    time.className = "time";
+    time.textContent = new Date().toTimeString().slice(0, 5);
+    row.appendChild(time);
+
+    document.getElementById("chatBody").appendChild(row);
+    scrollBottom();
+    return bubble;                      // 返回气泡引用：流式时要往里面追加文字
+  }
+
+  // 追加「正在输入」占位，方便等会儿删掉换成真回复
+  function addTyping() {
+    const row = document.createElement("div");
+    row.className = "msg-row bot";
+    row.id = "typingRow";
+    row.innerHTML = '<div class="bubble"><span class="typing"><span></span><span></span><span></span></span></div>';
+    document.getElementById("chatBody").appendChild(row);
+    scrollBottom();
+  }
+  function removeTyping() {
+    const t = document.getElementById("typingRow");
+    if (t) t.remove();
+  }
+
+  // 消息多了自动滚到底部（否则新消息会被挡住看不见）
+  function scrollBottom() {
+    const body = document.getElementById("chatBody");
+    body.scrollTop = body.scrollHeight;
+  }
+
+  // 在机器人回答下方追加一行"证据"：本次答案检索到了知识库哪几块
+  // 可溯源是 RAG 相对裸模型的本质优势——答案不是编的，是有出处的
+  function addSources(sources) {
+    const row = document.createElement("div");
+    row.className = "msg-row bot";
+    const s = document.createElement("div");
+    s.className = "bubble";
+    s.style.cssText = "background:#f0f4ff;border:1px solid #dbe4ff;color:#6b7280;font-size:12px;";
+    s.textContent = "📚 来源：" + sources.map(x => x.source + " 第" + x.idx + "块").join("、");
+    row.appendChild(s);
+    document.getElementById("chatBody").appendChild(row);
+    scrollBottom();
+  }
+
+  // Agent 的"过程"可视化：它每一轮调了什么工具、传了什么参数
+  // Agent 是多步黑盒推理，不画出轨迹，它出错你根本不知道错在哪一步
+  const TOOL_NAMES = { search_kb: "查知识库", query_order: "查订单" };
+  function addSteps(steps) {
+    const row = document.createElement("div");
+    row.className = "msg-row bot";
+    const s = document.createElement("div");
+    s.className = "bubble";
+    s.style.cssText = "background:#f7f0fa;border:1px solid #e4d5f0;color:#6b7280;font-size:12px;";
+    s.textContent = "🔧 " + steps.map(x => {
+      const args = Object.entries(x.args).map(([k, v]) => k + "=" + v).join(", ");
+      return `第${x.turn}轮 ${TOOL_NAMES[x.tool] || x.tool}(${args})${x.cached ? " [缓存]" : ""}`;
+    }).join(" → ");
+    row.appendChild(s);
+    document.getElementById("chatBody").appendChild(row);
+    scrollBottom();
+  }
+
+  // ================== 会话恢复（刷新页面找回上次对话） ==================
+  async function restoreSession() {
+    if (!sessionId) return;
+    try {
+      const resp = await fetch("/api/sessions/" + sessionId);
+      if (!resp.ok) return;                 // 会话不存在就算了，从空会话开始
+      const data = await resp.json();
+      if (!data.messages || !data.messages.length) return;
+
+      // 把欢迎语挪后面：先清空消息区，按数据库记录重放
+      document.getElementById("chatBody").innerHTML = "";
+      for (const m of data.messages) {
+        if (m.role === "user") {
+          addBubble("user", m.content);
+          history.push({ role: "user", content: m.content });
+        } else if (m.role === "assistant") {
+          addBubble("bot", m.content);
+          history.push({ role: "assistant", content: m.content });
+          if (m.meta) {
+            const meta = JSON.parse(m.meta);
+            if (meta.steps && meta.steps.length) addSteps(meta.steps);
+            if (meta.sources && meta.sources.length) addSources(meta.sources);
+          }
+        }
+      }
+    } catch (e) { /* 恢复失败不影响正常聊天 */ }
+  }
+
+  function newChat() {
+    localStorage.removeItem(SESSION_KEY);   // 丢掉旧会话钥匙
+    location.reload();                      // 重开页面 = 全新会话
+  }
+
+  // ================== 发送逻辑（SSE 流式版） ==================
+
+  async function send() {
+    if (pending) return;                      // 锁住了：这次点击直接忽略
+    const box = document.getElementById("inputBox");
+    const text = box.value.trim();
+    if (!text) return;
+
+    // ---- 上锁：进"等回复"状态，按钮置灰 ----
+    pending = true;
+    document.getElementById("sendBtn").disabled = true;
+
+    addBubble("user", text);   // 1. 把用户的话画上去
+    history.push({ role: "user", content: text });   // 2. 记进历史（画上去的都算数）
+    box.value = "";            // 3. 清空输入框
+    addTyping();               // 4. 显示「正在输入…」
+
+    try {
+      // SSE 流式：服务器会一段一段往回推，不是一次给完
+      const resp = await fetch("/api/chat/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          history: history.slice(-MAX_HISTORY),
+          session_id: sessionId,
+        }),
+      });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+      // ---- 读流：SSE 协议 = 每条消息 "data: {json}" + 两个换行 ----
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let botBubble = null;          // 首个 delta 到达时创建气泡，之后往里追加
+      let pendingSources = null;     // sources 先攒着，回答完再贴（顺序更好看）
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const line = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          if (!line.startsWith("data: ")) continue;
+
+          const ev = JSON.parse(line.slice(6));
+          if (ev.type === "delta") {
+            if (!botBubble) {                       // 第一个字到了：撤动画，开气泡
+              removeTyping();
+              botBubble = addBubble("bot", "");
+            }
+            botBubble.textContent += ev.text;       // 逐字追加 = 打字机效果
+            scrollBottom();
+          } else if (ev.type === "step") {
+            removeTyping();                         // 工具轨迹实时出现
+            if (!botBubble) botBubble = addBubble("bot", "");
+            addSteps([ev]);
+          } else if (ev.type === "sources") {
+            pendingSources = ev.sources;            // 攒着，等 done 再贴
+          } else if (ev.type === "done") {
+            sessionId = ev.session_id;              // 存下会话 ID（刷新恢复靠它）
+            localStorage.setItem(SESSION_KEY, sessionId);
+            if (pendingSources) addSources(pendingSources);
+            history.push({ role: "assistant", content: botBubble ? botBubble.textContent : "" });
+          } else if (ev.type === "error") {
+            removeTyping();
+            if (!botBubble) botBubble = addBubble("bot", "");
+            botBubble.textContent += ev.text;
+          }
+        }
+      }
+    } catch (e) {
+      removeTyping();
+      history.pop();             // 这轮没聊成，把刚记的用户消息撤掉，保持历史干净
+      addBubble("bot", "⚠️ 服务开小差了，请稍后再试～");
+    } finally {
+      // 无论成败：解锁，光标回输入框
+      pending = false;
+      document.getElementById("sendBtn").disabled = false;
+      box.focus();
+    }
+  }
+
+  // 按 Enter 也能发送（聊天软件的标配交互）
+  document.getElementById("inputBox").addEventListener("keydown", e => {
+    if (e.key === "Enter") send();
+  });
+
+  // 页面加载时：试着找回上次的会话
+  restoreSession();
+</script>
+</body>
+</html>
