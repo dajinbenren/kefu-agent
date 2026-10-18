@@ -16,3 +16,4 @@ python-dotenv==1.2.4      # 从 .env 读取 API key（密钥不进代码库）
 chromadb==1.5.9           # 向量数据库：RAG 的存储与相似度检索
 rank_bm25==0.2.2          # BM25 关键词检索：与向量检索互补做混合召回
 httpx==0.28.1             # HTTP 客户端：调用 rerank 等兼容层没有的接口
+mcp>=1.0,<2              # MCP 协议 SDK：把订单查询封装成标准 MCP Server（简历技能栏坐实）；锁 <2 避开 v2 破坏性变更（v2 已把 FastMCP 改名 MCPServer）
