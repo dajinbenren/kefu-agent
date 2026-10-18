@@ -9,3 +9,6 @@ __pycache__/
 .idea/
 .vscode/
 .DS_Store
+# 评测运行产物（含回答文本，不进仓库）
+eval_report.json
+__pycache__/
